@@ -1,3 +1,4 @@
+```python
 import pandas as pd
 import tensorflow as tf
 import streamlit as st
@@ -38,12 +39,6 @@ st.image(
 # Use st.cache_data to cache the data loading and preprocessing steps
 @st.cache_data
 def load_and_preprocess_data(file_path):
-    # Adjust this path for your GitHub repository.
-    # For example, if 'winequality-white.csv' is in a 'data' subfolder:
-    # data_path = os.path.join(os.path.dirname(__file__), 'data', 'winequality-white.csv')
-    
-    # For this Colab context, we'll use the provided drive path.
-    # Make sure this file exists in your deployed environment or adjust the path.
     try:
         df = pd.read_csv(file_path, delimiter=';')
     except FileNotFoundError:
@@ -56,7 +51,7 @@ def load_and_preprocess_data(file_path):
 
     # Prepare target variable (binary classification)
     y = pd.qcut(df['quality_encoded'], q=2, labels=[0, 1])
-    
+
     # Features (dropping original and encoded quality columns)
     X = df.drop(['quality', 'quality_encoded'], axis=1)
 
@@ -66,7 +61,7 @@ def load_and_preprocess_data(file_path):
 
     # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, train_size=0.8, random_state=34)
-    
+
     # Convert y_train and y_test to integer dtype
     y_train = y_train.astype(int)
     y_test = y_test.astype(int)
@@ -76,7 +71,8 @@ def load_and_preprocess_data(file_path):
     return df, X_train, y_train, X_scaled, scaler, num_feat
 
 # Define the path to your dataset
-DATA_FILE_PATH = 'winequality-white.csv'
+# IMPORTANT: Change this path to the relative path of your CSV file within your GitHub repository
+DATA_FILE_PATH = 'winequality-white.csv' # Example: 'data/winequality-white.csv' if in a data subfolder
 df, X_train, y_train, X_scaled_all, scaler, num_feat = load_and_preprocess_data(DATA_FILE_PATH)
 
 # --- Model Training (cached to run only once) ---
@@ -198,22 +194,23 @@ def map_prediction_to_label(prediction_value):
     else:
         return "Low Quality"
 
-# Make prediction when a button is clicked
-if st.sidebar.button("Predict Wine Quality"):
-    prediction = model.predict(input_data_scaled)
-    prediction_binary = np.round(prediction).flatten()[0] # Get the single binary prediction
-    quality_label = map_prediction_to_label(prediction_binary)
+# --- Dynamic Prediction and Display ---
+# The prediction will now update automatically as sliders are adjusted
+prediction = model.predict(input_data_scaled)
+prediction_binary = np.round(prediction).flatten()[0] # Get the single binary prediction
+quality_label = map_prediction_to_label(prediction_binary)
 
-    st.subheader("Prediction Result")
-    st.write(f"The predicted wine quality is: **{quality_label}**")
+st.subheader("Prediction Result")
+st.write(f"The predicted wine quality is: **{quality_label}**")
 
-    # Display prediction probability as a bar chart
-    st.markdown("<h3>Prediction Probability</h3>", unsafe_allow_html=True)
-    probability_high = prediction[0][0]
-    probability_low = 1 - probability_high
+# Display prediction probability as a bar chart
+st.markdown("<h3>Prediction Probability</h3>", unsafe_allow_html=True)
+probability_high = prediction[0][0]
+probability_low = 1 - probability_high
 
-    prob_df = pd.DataFrame({
-        'Quality Level': ['Low Quality', 'High Quality'],
-        'Probability': [probability_low, probability_high]
-    })
-    st.bar_chart(prob_df.set_index('Quality Level'))
+prob_df = pd.DataFrame({
+    'Quality Level': ['Low Quality', 'High Quality'],
+    'Probability': [probability_low, probability_high]
+})
+st.bar_chart(prob_df.set_index('Quality Level'))
+```
