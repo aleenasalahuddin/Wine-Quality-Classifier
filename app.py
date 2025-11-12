@@ -5,16 +5,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils import resample
 
-# Ensure reproducibility
+# Reproducibility
 np.random.seed(42)
 tf.random.set_seed(42)
 
 # Streamlit page setup
 st.set_page_config(page_title="Wine Quality Predictor", page_icon="🍷", layout="wide")
 
-# Title and header
+# Title & Header
 st.markdown("""
     <div style="text-align:center; padding:1rem 0;">
         <h1 style="color:#8E4585;">🍷 Wine Quality Prediction</h1>
@@ -30,25 +31,44 @@ st.image(
 
 # --- Data Loading & Preprocessing ---
 @st.cache_data
-def load_data(path):
+def load_and_preprocess_data(path):
     df = pd.read_csv(path, delimiter=';')
     
-    # Encode quality as binary: 1 = high quality (≥7), 0 = low quality (<7)
+    # Encode binary label: 1 = High Quality (>=7), 0 = Low Quality (<7)
     df['quality_label'] = (df['quality'] >= 7).astype(int)
-    
-    # Features and target
-    X = df.drop(['quality', 'quality_label'], axis=1)
-    y = df['quality_label']
-    
+
+    # Separate majority and minority classes
+    df_majority = df[df['quality_label'] == 0]
+    df_minority = df[df['quality_label'] == 1]
+
+    # Upsample minority class to balance
+    df_minority_upsampled = resample(
+        df_minority,
+        replace=True,
+        n_samples=len(df_majority),
+        random_state=42
+    )
+
+    # Combine and shuffle balanced dataset
+    df_balanced = pd.concat([df_majority, df_minority_upsampled])
+    df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
+
+    # Define features and target
+    X = df_balanced.drop(['quality', 'quality_label'], axis=1)
+    y = df_balanced['quality_label']
+
     # Standardize features
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
-    
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, train_size=0.8, random_state=42, stratify=y)
-    return df, X_train, y_train, X_test, y_test, scaler
 
-df, X_train, y_train, X_test, y_test, scaler = load_data('winequality-white.csv')
+    # Train-test split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled, y, train_size=0.8, random_state=42, stratify=y
+    )
+
+    return df_balanced, X_train, y_train, X_test, y_test, scaler
+
+df, X_train, y_train, X_test, y_test, scaler = load_and_preprocess_data('winequality-white.csv')
 
 # --- Model Training ---
 @st.cache_resource
@@ -60,13 +80,13 @@ def train_model(X_train, y_train):
         tf.keras.layers.Dense(1, activation='sigmoid')
     ])
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    model.fit(X_train, y_train, validation_split=0.2, epochs=50, batch_size=32, verbose=0)
+    model.fit(X_train, y_train, validation_split=0.2, epochs=30, batch_size=32, verbose=0)
     return model
 
 model = train_model(X_train, y_train)
 
 # --- Dataset Overview ---
-st.markdown("### 📊 Dataset Overview")
+st.markdown("### 📊 Balanced Dataset Overview")
 col1, col2 = st.columns(2)
 with col1:
     st.dataframe(df.head(10))
@@ -90,7 +110,7 @@ st.line_chart(df[['quality', 'alcohol']])
 st.area_chart(df[['quality', 'alcohol']])
 st.bar_chart(df[['quality', 'alcohol']])
 
-# --- Sidebar User Inputs ---
+# --- Sidebar Input Controls ---
 st.sidebar.header("🔧 Adjust Wine Properties")
 
 input_features = {}
@@ -105,17 +125,17 @@ for col in df.drop(['quality', 'quality_label'], axis=1).columns:
 input_df = pd.DataFrame([input_features])
 input_scaled = pd.DataFrame(scaler.transform(input_df), columns=input_df.columns)
 
-# --- Prediction Button ---
+# --- Prediction Section ---
 st.sidebar.markdown("---")
 if st.sidebar.button("🔮 Predict Wine Quality"):
     with st.spinner("Analyzing wine properties..."):
-        prediction = np.array(model.predict(input_scaled, verbose=0))[0][0]
+        prediction = float(model.predict(input_scaled, verbose=0)[0][0])
         pred_binary = int(np.round(prediction))
         quality_label = "High Quality 🍇" if pred_binary == 1 else "Low Quality 🍷"
-        
+
         st.subheader("Prediction Result")
         st.markdown(f"<h3 style='color:#8E4585;'>Predicted Wine Quality: {quality_label}</h3>", unsafe_allow_html=True)
-        
+
         # Probability bar chart
         prob_df = pd.DataFrame({
             'Quality Level': ['Low Quality', 'High Quality'],
@@ -123,7 +143,7 @@ if st.sidebar.button("🔮 Predict Wine Quality"):
         })
         st.bar_chart(prob_df.set_index('Quality Level'))
 
-        # Pie chart for prediction confidence
+        # Pie chart for confidence visualization
         fig_pred, ax_pred = plt.subplots()
         ax_pred.pie(
             [1 - prediction, prediction],
