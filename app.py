@@ -37,7 +37,7 @@ st.image(
 # --- Data Loading and Preprocessing ---
 # Use st.cache_data to cache the data loading and preprocessing steps
 @st.cache_data
-def load_and_preprocess_data(file_path): 
+def load_and_preprocess_data(file_path):
     # Adjust this path for your GitHub repository.
     # For example, if 'winequality-white.csv' is in a 'data' subfolder:
     # data_path = os.path.join(os.path.dirname(__file__), 'data', 'winequality-white.csv')
@@ -76,8 +76,6 @@ def load_and_preprocess_data(file_path):
     return df, X_train, y_train, X_scaled, scaler, num_feat
 
 # Define the path to your dataset
-# IMPORTANT: Change this path if you are not running in Google Colab 
-# and your file is not in /content/drive/MyDrive/wine-quality-dataset/ 
 DATA_FILE_PATH = 'winequality-white.csv'
 df, X_train, y_train, X_scaled_all, scaler, num_feat = load_and_preprocess_data(DATA_FILE_PATH)
 
