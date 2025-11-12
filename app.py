@@ -212,4 +212,3 @@ prob_df = pd.DataFrame({
     'Probability': [probability_low, probability_high]
 })
 st.bar_chart(prob_df.set_index('Quality Level'))
-```
