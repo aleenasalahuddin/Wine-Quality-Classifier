@@ -6,21 +6,20 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.utils import resample
+from sklearn.utils.class_weight import compute_class_weight
 
-# Reproducibility
+# reproducibility
 np.random.seed(42)
 tf.random.set_seed(42)
 
-# Streamlit page setup
+# --- Streamlit page setup ---
 st.set_page_config(page_title="Wine Quality Predictor", page_icon="🍷", layout="wide")
 
-# Title & Header
 st.markdown("""
-    <div style="text-align:center; padding:1rem 0;">
-        <h1 style="color:#8E4585;">🍷 Wine Quality Prediction</h1>
-        <p>Analyze wine characteristics and predict its quality — powered by Machine Learning (TensorFlow + Streamlit).</p>
-    </div>
+<div style="text-align:center; padding:1rem 0;">
+  <h1 style="color:#8E4585;">🍷 Wine Quality Prediction</h1>
+  <p>Analyze wine characteristics and predict its quality — powered by TensorFlow and Streamlit.</p>
+</div>
 """, unsafe_allow_html=True)
 
 st.image(
@@ -29,50 +28,33 @@ st.image(
     caption="Discover how subtle chemistry determines wine excellence 🍇"
 )
 
-# --- Data Loading & Preprocessing ---
+# --- Load and preprocess data ---
 @st.cache_data
 def load_and_preprocess_data(path):
     df = pd.read_csv(path, delimiter=';')
-    
-    # Encode binary label: 1 = High Quality (>=7), 0 = Low Quality (<7)
     df['quality_label'] = (df['quality'] >= 7).astype(int)
 
-    # Separate majority and minority classes
-    df_majority = df[df['quality_label'] == 0]
-    df_minority = df[df['quality_label'] == 1]
+    X = df.drop(['quality', 'quality_label'], axis=1)
+    y = df['quality_label']
 
-    # Upsample minority class to balance
-    df_minority_upsampled = resample(
-        df_minority,
-        replace=True,
-        n_samples=len(df_majority),
-        random_state=42
-    )
-
-    # Combine and shuffle balanced dataset
-    df_balanced = pd.concat([df_majority, df_minority_upsampled])
-    df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
-
-    # Define features and target
-    X = df_balanced.drop(['quality', 'quality_label'], axis=1)
-    y = df_balanced['quality_label']
-
-    # Standardize features
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
 
-    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
         X_scaled, y, train_size=0.8, random_state=42, stratify=y
     )
 
-    return df_balanced, X_train, y_train, X_test, y_test, scaler
+    # Compute balanced class weights
+    weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+    class_weight_dict = dict(enumerate(weights))
 
-df, X_train, y_train, X_test, y_test, scaler = load_and_preprocess_data('winequality-white.csv')
+    return df, X_train, X_test, y_train, y_test, scaler, class_weight_dict
 
-# --- Model Training ---
+df, X_train, X_test, y_train, y_test, scaler, class_weight_dict = load_and_preprocess_data("winequality-white.csv")
+
+# --- Train model ---
 @st.cache_resource
-def train_model(X_train, y_train):
+def train_model(X_train, y_train, class_weight_dict):
     model = tf.keras.Sequential([
         tf.keras.layers.Dense(128, activation='relu', input_shape=(X_train.shape[1],)),
         tf.keras.layers.Dropout(0.2),
@@ -80,27 +62,32 @@ def train_model(X_train, y_train):
         tf.keras.layers.Dense(1, activation='sigmoid')
     ])
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    model.fit(X_train, y_train, validation_split=0.2, epochs=30, batch_size=32, verbose=0)
+    model.fit(
+        X_train, y_train,
+        validation_split=0.2,
+        epochs=100, batch_size=32,
+        verbose=0,
+        class_weight=class_weight_dict
+    )
     return model
 
-model = train_model(X_train, y_train)
+model = train_model(X_train, y_train, class_weight_dict)
 
-# --- Dataset Overview ---
-st.markdown("### 📊 Balanced Dataset Overview")
+# --- Dataset overview ---
+st.markdown("### 📊 Dataset Overview")
 col1, col2 = st.columns(2)
 with col1:
     st.dataframe(df.head(10))
 with col2:
     st.metric("Rows", df.shape[0])
     st.metric("Columns", df.shape[1])
-    st.metric("High-Quality Wines", int(df['quality_label'].sum()))
-    st.metric("Low-Quality Wines", int((1 - df['quality_label']).sum()))
+    st.metric("High-quality wines", int(df['quality_label'].sum()))
+    st.metric("Low-quality wines", int((1 - df['quality_label']).sum()))
 
 st.divider()
 
-# --- Data Visualizations ---
+# --- Visualizations ---
 st.markdown("<h2 style='color:#8E4585;text-align:center;'>Data Visualizations</h2>", unsafe_allow_html=True)
-
 corr = df.corr(numeric_only=True)
 fig, ax = plt.subplots(figsize=(12, 8))
 sns.heatmap(corr, annot=True, vmin=-1, vmax=1, cmap="coolwarm", ax=ax)
@@ -110,9 +97,8 @@ st.line_chart(df[['quality', 'alcohol']])
 st.area_chart(df[['quality', 'alcohol']])
 st.bar_chart(df[['quality', 'alcohol']])
 
-# --- Sidebar Input Controls ---
+# --- Sidebar inputs ---
 st.sidebar.header("🔧 Adjust Wine Properties")
-
 input_features = {}
 for col in df.drop(['quality', 'quality_label'], axis=1).columns:
     input_features[col] = st.sidebar.slider(
@@ -125,39 +111,39 @@ for col in df.drop(['quality', 'quality_label'], axis=1).columns:
 input_df = pd.DataFrame([input_features])
 input_scaled = pd.DataFrame(scaler.transform(input_df), columns=input_df.columns)
 
-# --- Prediction Section ---
+# --- Prediction section ---
 st.sidebar.markdown("---")
 if st.sidebar.button("🔮 Predict Wine Quality"):
     with st.spinner("Analyzing wine properties..."):
-        prediction = float(model.predict(input_scaled, verbose=0)[0][0])
-        pred_binary = int(np.round(prediction))
+        probability = float(model.predict(input_scaled, verbose=0)[0][0])
+        pred_binary = int(np.round(probability))
         quality_label = "High Quality 🍇" if pred_binary == 1 else "Low Quality 🍷"
 
         st.subheader("Prediction Result")
         st.markdown(f"<h3 style='color:#8E4585;'>Predicted Wine Quality: {quality_label}</h3>", unsafe_allow_html=True)
 
-        # Probability bar chart
-        prob_df = pd.DataFrame({
-            'Quality Level': ['Low Quality', 'High Quality'],
-            'Probability': [1 - prediction, prediction]
-        })
-        st.bar_chart(prob_df.set_index('Quality Level'))
+        st.write(f"Raw probability: **{probability:.3f}**")
 
-        # Pie chart for confidence visualization
+        prob_df = pd.DataFrame({
+            "Quality Level": ["Low Quality", "High Quality"],
+            "Probability": [1 - probability, probability]
+        })
+        st.bar_chart(prob_df.set_index("Quality Level"))
+
         fig_pred, ax_pred = plt.subplots()
         ax_pred.pie(
-            [1 - prediction, prediction],
-            labels=['Low Quality', 'High Quality'],
-            autopct='%1.1f%%',
-            colors=['#FF9999', '#66B2FF']
+            [1 - probability, probability],
+            labels=["Low Quality", "High Quality"],
+            autopct="%1.1f%%",
+            colors=["#FF9999", "#66B2FF"]
         )
-        ax_pred.axis('equal')
+        ax_pred.axis("equal")
         st.pyplot(fig_pred)
 
 # --- Footer ---
 st.markdown("""
-    <hr>
-    <p style='text-align:center; color:#888;'>
-        Built with ❤️ using Streamlit, TensorFlow, and the UCI Wine Quality Dataset.
-    </p>
+<hr>
+<p style='text-align:center; color:#888;'>
+Built with ❤️ using Streamlit, TensorFlow, and the UCI Wine Quality Dataset.
+</p>
 """, unsafe_allow_html=True)
