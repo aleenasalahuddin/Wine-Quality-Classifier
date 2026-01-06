@@ -17,7 +17,7 @@ The project demonstrates the full machine learning lifecycle:
 ## Live Demo
 
 🔗 **Streamlit App:**  
-(Add your deployed Streamlit link here)
+https://wine-quality-classifier-gtsszwa7vashcyn2hp7ccd.streamlit.app/
 
 ---
 
